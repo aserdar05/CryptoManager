@@ -1,0 +1,49 @@
+public class KepExternalClientServiceAuthorizationManager : ServiceAuthorizationManager
+    {
+        protected override bool CheckAccessCore(OperationContext operationContext)
+        {
+            var action = operationContext.RequestContext.RequestMessage.Headers.Action;
+            DispatchOperation operation = operationContext.EndpointDispatcher.DispatchRuntime.Operations.FirstOrDefault(o => o.Action == action);
+            Type hostType = operationContext.Host.Description.ServiceType;
+            MethodInfo method = hostType.GetMethod(operation.Name);
+            bool isAnonymous = method.GetCustomAttributes(true).Any(a => a.GetType() == typeof(AllowAnonymousAttribute));
+
+            if (!isAnonymous)
+            {
+                var accessToken = OperationContext.Current.IncomingMessageHeaders.GetHeader<string>("Bearer", "http://tempuri.org/");
+                RemoteEndpointMessageProperty endpoint = OperationContext.Current.IncomingMessageProperties[RemoteEndpointMessageProperty.Name] as RemoteEndpointMessageProperty;
+                string clientIp = endpoint.Address;
+                InterContext.Logger.Info("Web Servis external client api metodu çağırıldı. Client ip : " + clientIp);
+
+                Result tokenResult = ApiUtils.ValidateServiceToken(accessToken);
+                InterContext.Logger.Info("Web Servis external client api metodu token validation: Doğrulama sonucu : " + tokenResult.Passed + ", Sonuç mesajı : " + tokenResult.Message  + "}");
+                if (tokenResult.Passed)
+                {
+                    UserAuthModel model = tokenResult.Data as UserAuthModel;
+                    var claims = new List<Claim>();
+                    claims.Add(new Claim(ClaimTypes.Name, model.RemUserId.ToString()));
+                    ClaimsIdentity identity = new ClaimsIdentity(claims);
+                    ClaimsPrincipal.ClaimsPrincipalSelector = () =>
+                    {
+                        return new ClaimsPrincipal(identity);
+                    };
+                }
+                return tokenResult.Passed;
+            }
+            else return true;
+        }
+
+        private AuthenticationTicket GetTicket(string accessToken)
+        {
+            var dataFormat = KepTicketFactory.KepDataFormat();
+            try
+            {
+                return dataFormat.Unprotect(accessToken);
+            }
+            catch (Exception exc)
+            {
+                InterContext.Logger.Info("GetTicket DataFormatı hata aldı." + exc.Message + "." + exc.StackTrace);
+                throw;
+            }
+        }
+    }
