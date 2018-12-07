@@ -1,0 +1,7 @@
+public ServiceHandler(BindingType bindingType) {
+            this.Token = InterContext.Current.ServiceAuthToken;
+            Client = new RemServiceApiClient(bindingType == BindingType.BasicHttp ? "basicHttpBinding" : "basicHttpsBinding");
+            OperationContextScope = new OperationContextScope(Client.InnerChannel);
+            OperationContext.Current.OutgoingMessageHeaders.Add(MessageHeader.CreateHeader("Bearer", "http://kep.com.tr/v1", this.Token));
+            this.ValidateToken();
+        }
